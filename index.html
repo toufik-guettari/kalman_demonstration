@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtre de Kalman Avancé - Suivi de Drone (Version Pédagogique)</title>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <style>
+        /* Styles existants... */
+        :root {
+            --background: #0A0E1A;
+            --panel: #1A1F2E;
+            --card: #232938;
+            --border: #374151;
+            --grid: #2D3748;
+            --text: #E8EAED;
+            --text-secondary: #9AA0A6;
+            --accent: #4A9EFF;
+            --warning: #FFB020;
+            --error: #FF4757;
+            --success: #00D26A;
+            --true-trajectory: #FF6B6B;
+            --gps-measurements: #4ECDC4;
+            --kalman-estimate: #45B7D1;
+            --ellipses: #96CEB4;
+            --velocity-vectors: #FFEAA7;
+            --accent-light: #6BB6FF;
+        }
+
+        /* Styles existants du code original... */
+
+        /* NOUVEAUX STYLES POUR POPUPS PÉDAGOGIQUES */
+        .help-icon {
+            background: var(--accent);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 5px;
+            position: relative;
+        }
+
+        .help-icon:hover {
+            background: var(--accent-light);
+        }
+
+        .tooltip {
+            position: absolute;
+            background: var(--card);
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            padding: 15px;
+            color: var(--text);
+            font-size: 12px;
+            line-height: 1.4;
+            max-width: 300px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+        }
+
+        .tooltip.show {
+            display: block;
+        }
+
+        .tooltip h4 {
+            color: var(--accent);
+            margin: 0 0 8px 0;
+            font-size: 14px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: var(--card);
+            border: 2px solid var(--accent);
+            border-radius: 10px;
+            padding: 25px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: var(--text);
+        }
+
+        .modal-header {
+            color: var(--accent);
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .close-modal {
+            float: right;
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .tutorial-button {
+            background: var(--success);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px;
+        }
+
+        .scenario-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+
+        .scenario-btn {
+            background: var(--warning);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .interpretation-panel {
+            background: var(--panel);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+
+        .interpretation-title {
+            color: var(--accent);
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        /* Mise à jour des styles existants */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background);
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--accent);
+            font-size: 28px;
+            margin: 0;
+            padding: 10px 0;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .graph-container {
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .main-graph {
+            grid-column: 1 / 3;
+            grid-row: 1 / 3;
+            height: 600px;
+        }
+
+        .small-graph {
+            height: 280px;
+        }
+
+        .controls-panel {
+            background-color: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 15px;
+        }
+
+        .control-group {
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        .control-title {
+            font-size: 14px;
+            color: var(--text);
+            margin-bottom: 8px;
+            text-align: center;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slider-container {
+            margin-bottom: 10px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .slider-value {
+            font-size: 12px;
+            color: var(--text);
+            text-align: center;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--accent-light);
+        }
+
+        .reset-button {
+            background-color: var(--error);
+        }
+
+        .reset-button:hover {
+            background-color: #ff6b6b;
+        }
+
+        .radio-group, .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .radio-option, .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="radio"], input[type="checkbox"] {
+            margin: 0;
+        }
+
+        label {
+            font-size: 12px;
+            color: var(--text);
+        }
+
+        .info-panel {
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .info-title {
+            font-size: 16px;
+            color: var(--accent);
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .info-content {
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text);
+        }
+
+        .plotly-graph-div {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>FILTRE DE KALMAN AVANCÉ - SUIVI DE DRONE (Version Pédagogique)</h1>
+            <button class="tutorial-button" onclick="showTutorial()">🎓 TUTORIEL INTERACTIF</button>
+        </header>
+
+        <!-- Scénarios prédéfinis -->
+        <div class="scenario-buttons">
+            <button class="scenario-btn" onclick="loadScenario('basic')">📚 Scénario Basique</button>
+            <button class="scenario-btn" onclick="loadScenario('noisy')">🔊 GPS Bruité</button>
+            <button class="scenario-btn" onclick="loadScenario('dropout')">📵 Perte Signal</button>
+            <button class="scenario-btn" onclick="loadScenario('outliers')">⚠️ Mesures Erronées</button>
+            <button class="scenario-btn" onclick="loadScenario('challenging')">🔥 Défi Expert</button>
+        </div>
+
+        <div class="dashboard">
+            <div class="graph-container main-graph">
+                <span class="help-icon" data-tooltip="main-graph">?</span>
+                <div id="trajectory-plot"></div>
+            </div>
+            <div class="graph-container small-graph">
+                <span class="help-icon" data-tooltip="error-graph">?</span>
+                <div id="error-plot"></div>
+            </div>
+            <div class="graph-container small-graph">
+                <span class="help-icon" data-tooltip="uncertainty-graph">?</span>
+                <div id="uncertainty-plot"></div>
+            </div>
+            <div class="graph-container small-graph">
+                <span class="help-icon" data-tooltip="gain-graph">?</span>
+                <div id="gain-plot"></div>
+            </div>
+            <div class="graph-container small-graph">
+                <span class="help-icon" data-tooltip="innovation-graph">?</span>
+                <div id="innovation-plot"></div>
+            </div>
+            <div class="graph-container" id="info-panel">
+                <div class="info-title">STATISTIQUES</div>
+                <div class="info-content" id="stats-info"></div>
+                
+                <!-- Panneau d'interprétation automatique -->
+                <div class="interpretation-panel">
+                    <div class="interpretation-title">🧠 INTERPRÉTATION AUTOMATIQUE</div>
+                    <div id="auto-interpretation"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <div class="controls-grid">
+                <!-- Ligne 1: Sliders principaux avec aide -->
+                <div class="control-group">
+                    <div class="control-title">
+                        Bruit Mesure (R)
+                        <span class="help-icon" data-tooltip="R-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.1</span>
+                            <span>10.0</span>
+                        </div>
+                        <input type="range" id="R_val" min="0.1" max="10.0" step="0.1" value="2.0">
+                        <div class="slider-value" id="R_val-value">2.0</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">
+                        Bruit Position (Q)
+                        <span class="help-icon" data-tooltip="Q-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.001</span>
+                            <span>5.0</span>
+                        </div>
+                        <input type="range" id="Q_pos_val" min="0.001" max="5.0" step="0.01" value="0.01">
+                        <div class="slider-value" id="Q_pos_val-value">0.01</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">
+                        Bruit Vitesse (Qv)
+                        <span class="help-icon" data-tooltip="Qv-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.001</span>
+                            <span>5.0</span>
+                        </div>
+                        <input type="range" id="Q_vel_val" min="0.001" max="5.0" step="0.01" value="0.01">
+                        <div class="slider-value" id="Q_vel_val-value">0.01</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">
+                        Incertitude Initiale
+                        <span class="help-icon" data-tooltip="init-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>10</span>
+                            <span>2000</span>
+                        </div>
+                        <input type="range" id="initial_uncertainty" min="10" max="2000" step="10" value="500">
+                        <div class="slider-value" id="initial_uncertainty-value">500</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">
+                        Facteur Accélération
+                        <span class="help-icon" data-tooltip="accel-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.5</span>
+                            <span>3.0</span>
+                        </div>
+                        <input type="range" id="acceleration_factor" min="0.5" max="3.0" step="0.1" value="1.0">
+                        <div class="slider-value" id="acceleration_factor-value">1.0</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">
+                        Facteur d'Oubli
+                        <span class="help-icon" data-tooltip="fading-param">?</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.8</span>
+                            <span>1.0</span>
+                        </div>
+                        <input type="range" id="fading_memory" min="0.8" max="1.0" step="0.01" value="1.0">
+                        <div class="slider-value" id="fading_memory-value">1.0</div>
+                    </div>
+                </div>
+
+                <!-- Autres contrôles... (identiques au code original) -->
+                <div class="control-group">
+                    <div class="control-title">Bruit Mouvement</div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0.0</span>
+                            <span>2.0</span>
+                        </div>
+                        <input type="range" id="motion_noise" min="0.0" max="2.0" step="0.1" value="0.0">
+                        <div class="slider-value" id="motion_noise-value">0.0</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Magnitude Outliers</div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0</span>
+                            <span>50</span>
+                        </div>
+                        <input type="range" id="outlier_magnitude" min="0" max="50" step="1" value="20">
+                        <div class="slider-value" id="outlier_magnitude-value">20</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Début Dropout</div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0</span>
+                            <span>49</span>
+                        </div>
+                        <input type="range" id="dropout_start" min="0" max="49" step="1" value="20">
+                        <div class="slider-value" id="dropout_start-value">20</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Fin Dropout</div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>0</span>
+                            <span>49</span>
+                        </div>
+                        <input type="range" id="dropout_end" min="0" max="49" step="1" value="30">
+                        <div class="slider-value" id="dropout_end-value">30</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Actions</div>
+                    <div class="button-group">
+                        <button id="reset-button" class="reset-button">RESET</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Type de Mouvement</div>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" id="motion-straight" name="motion-type" value="straight" checked>
+                            <label for="motion-straight">Droit</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="motion-circular" name="motion-type" value="circular">
+                            <label for="motion-circular">Circulaire</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="motion-random" name="motion-type" value="random">
+                            <label for="motion-random">Aléatoire</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="motion-accelerating" name="motion-type" value="accelerating">
+                            <label for="motion-accelerating">Accélérant</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-title">Options Avancées</div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="show-ellipses">
+                            <label for="show-ellipses">Ellipses</label>
+                        </div>
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="show-velocity">
+                            <label for="show-velocity">Vitesse</label>
+                        </div>
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="adaptive-R">
+                            <label for="adaptive-R">R Adaptatif</label>
+                        </div>
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="multipath-effect">
+                            <label for="multipath-effect">Multitrajets</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltips -->
+    <div class="tooltip" id="tooltip-R-param">
+        <h4>🔊 Bruit de Mesure (R)</h4>
+        <strong>Définition :</strong> Variance du bruit sur les mesures GPS<br>
+        <strong>Effet :</strong> Plus R est grand, moins le filtre fait confiance aux mesures<br>
+        <strong>Valeur typique :</strong> 1-5 mètres<br>
+        <strong>Expérience :</strong> Montez R à 8, les points GPS s'éloignent de la trajectoire réelle
+    </div>
+
+    <div class="tooltip" id="tooltip-Q-param">
+        <h4>🎯 Bruit de Position (Q)</h4>
+        <strong>Définition :</strong> Incertitude sur le modèle de mouvement en position<br>
+        <strong>Effet :</strong> Plus Q est grand, plus le filtre s'adapte rapidement<br>
+        <strong>Compromis :</strong> Réactivité vs stabilité<br>
+        <strong>Expérience :</strong> Q petit = ligne lisse, Q grand = suit les virages
+    </div>
+
+    <div class="tooltip" id="tooltip-main-graph">
+        <h4>📍 Graphique Principal - Trajectoire</h4>
+        <strong>Ligne rouge :</strong> Trajectoire réelle du drone (vérité terrain)<br>
+        <strong>Points turquoise :</strong> Mesures GPS bruitées reçues<br>
+        <strong>Ligne bleue :</strong> Estimation optimale du filtre de Kalman<br>
+        <strong>Objectif :</strong> La ligne bleue doit suivre au mieux la rouge
+    </div>
+
+    <!-- Modal pour tutoriel -->
+    <div class="modal-overlay" id="tutorial-modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeTutorial()">X</button>
+            <div class="modal-header" id="tutorial-title">🎓 TUTORIEL INTERACTIF</div>
+            <div id="tutorial-content"></div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="previousStep()">⬅️ Précédent</button>
+                <button onclick="nextStep()">Suivant ➡️</button>
+                <button onclick="closeTutorial()" style="background: var(--error);">Terminer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration des couleurs (identique)
+        const colors = {
+            background: '#0A0E1A',
+            panel: '#1A1F2E',
+            card: '#232938',
+            border: '#374151',
+            grid: '#2D3748',
+            text: '#E8EAED',
+            text_secondary: '#9AA0A6',
+            accent: '#4A9EFF',
+            warning: '#FFB020',
+            error: '#FF4757',
+            success: '#00D26A',
+            true_trajectory: '#FF6B6B',
+            gps_measurements: '#4ECDC4',
+            kalman_estimate: '#45B7D1',
+            ellipses: '#96CEB4',
+            velocity_vectors: '#FFEAA7',
+            accent_light: '#6BB6FF'
+        };
+
+        // Paramètres par défaut (identiques)
+        let params = {
+            T: 50,
+            motion_type: 'straight',
+            motion_noise: 0.0,
+            acceleration_factor: 1.0,
+            R_val: 2.0,
+            Q_pos_val: 0.01,
+            Q_vel_val: 0.01,
+            dropout_start: 20,
+            dropout_end: 30,
+            outlier_indices: [10],
+            outlier_magnitude: 20.0,
+            initial_uncertainty: 500.0,
+            fading_memory: 1.0,
+            adaptive_R: false,
+            multipath_effect: false,
+            show_ellipses: false,
+            show_velocity: false
+        };
+
+        // Variables globales
+        let true_path, gps, kalman, P_list, K_list, innovations;
+        let tutorialStep = 0;
+        
+        // Initialisation avec éléments pédagogiques
+        document.addEventListener('DOMContentLoaded', function() {
+            initSliders();
+            initTooltips();
+            initEventListeners();
+            runSimulation();
+        });
+
+        // Initialiser les tooltips
+        function initTooltips() {
+            document.querySelectorAll('.help-icon').forEach(icon => {
+                icon.addEventListener('mouseenter', showTooltip);
+                icon.addEventListener('mouseleave', hideTooltip);
+            });
+        }
+
+        // Afficher tooltip
+        function showTooltip(event) {
+            const tooltipId = `tooltip-${event.target.dataset.tooltip}`;
+            const tooltip = document.getElementById(tooltipId);
+            if (tooltip) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = event.pageX + 10 + 'px';
+                tooltip.style.top = event.pageY + 10 + 'px';
+            }
+        }
+
+        // Cacher tooltip
+        function hideTooltip(event) {
+            const tooltipId = `tooltip-${event.target.dataset.tooltip}`;
+            const tooltip = document.getElementById(tooltipId);
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        // Charger un scénario prédéfini
+        function loadScenario(scenario) {
+            switch(scenario) {
+                case 'basic':
+                    setParams({R_val: 1.0, Q_pos_val: 0.01, motion_type: 'straight'});
+                    showInterpretation("Scénario basique : GPS précis, mouvement prévisible. Le filtre devrait bien fonctionner.");
+                    break;
+                case 'noisy':
+                    setParams({R_val: 8.0, Q_pos_val: 0.01, motion_type: 'straight'});
+                    showInterpretation("GPS très bruité : Les mesures sont peu fiables. Le filtre doit faire plus confiance à ses prédictions.");
+                    break;
+                case 'dropout':
+                    setParams({R_val: 2.0, dropout_start: 15, dropout_end: 35, motion_type: 'circular'});
+                    showInterpretation("Perte de signal prolongée : Le filtre doit continuer par prédiction seule pendant 20 étapes.");
+                    break;
+                case 'outliers':
+                    setParams({R_val: 2.0, outlier_magnitude: 40, motion_type: 'straight'});
+                    showInterpretation("Mesures aberrantes : Certaines mesures GPS sont très éloignées. Le filtre doit les détecter.");
+                    break;
+                case 'challenging':
+                    setParams({R_val: 6.0, Q_pos_val: 0.5, motion_type: 'random', multipath_effect: true, dropout_start: 10, dropout_end: 20});
+                    showInterpretation("Scénario expert : Cumul de difficultés. Test ultime pour le filtre de Kalman.");
+                    break;
+            }
+            runSimulation();
+        }
+
+        // Appliquer des paramètres
+        function setParams(newParams) {
+            Object.keys(newParams).forEach(key => {
+                if (key in params) {
+                    params[key] = newParams[key];
+                    
+                    // Mettre à jour l'interface utilisateur
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.value = newParams[key];
+                        const valueElement = document.getElementById(key + '-value');
+                        if (valueElement) {
+                            valueElement.textContent = newParams[key];
+                        }
+                    }
+                    
+                    // Gérer les radios
+                    if (key === 'motion_type') {
+                        document.getElementById('motion-' + newParams[key]).checked = true;
+                    }
+                }
+            });
+        }
+
+        // Afficher une interprétation
+        function showInterpretation(text) {
+            const interpretationPanel = document.getElementById('auto-interpretation');
+            interpretationPanel.innerHTML = `<div style="padding: 10px; background: rgba(74, 158, 255, 0.1); border-radius: 5px; border-left: 3px solid var(--accent);">${text}</div>`;
+        }
+
+        // Tutoriel interactif
+        const tutorialSteps = [
+            {
+                title: "Bienvenue dans le Filtre de Kalman",
+                content: `
+                    <h3>Qu'est-ce qu'un filtre de Kalman ?</h3>
+                    <p>Le filtre de Kalman est un algorithme mathématique qui estime la position d'un objet en mouvement en combinant :</p>
+                    <ul>
+                        <li>📡 <strong>Mesures bruitées</strong> (GPS imprécis)</li>
+                        <li>🎯 <strong>Modèle de mouvement</strong> (prédictions physiques)</li>
+                    </ul>
+                    <p>Il trouve le <strong>compromis optimal</strong> entre ces deux sources d'information.</p>
+                    
+                    <div style="background: var(--panel); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Dans ce simulateur :</strong><br>
+                        • Rouge = Trajectoire réelle du drone<br>
+                        • Turquoise = Mesures GPS reçues<br>
+                        • Bleu = Estimation du filtre
+                    </div>
+                `
+            },
+            {
+                title: "Premier test : Paramètres de base",
+                content: `
+                    <h3>Observons le comportement de base</h3>
+                    <p>Regardez le graphique principal. Que remarquez-vous ?</p>
+                    
+                    <div style="background: var(--success); color: white; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>✅ À retenir :</strong><br>
+                        La ligne bleue (estimation) suit la rouge (réalité) même si les points turquoise (GPS) sont dispersés !
+                    </div>
+                    
+                    <p><strong>Exercice :</strong> Cliquez sur "GPS Bruité" dans les scénarios et observez la différence.</p>
+                `
+            },
+            {
+                title: "Le paramètre R - Confiance dans les mesures",
+                content: `
+                    <h3>R contrôle la confiance dans le GPS</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div style="background: var(--error); padding: 10px; border-radius: 5px;">
+                            <strong>R faible (0.5)</strong><br>
+                            • GPS très précis<br>
+                            • Filtre suit les mesures<br>
+                            • Réactif mais instable
+                        </div>
+                        <div style="background: var(--warning); padding: 10px; border-radius: 5px;">
+                            <strong>R élevé (8.0)</strong><br>
+                            • GPS peu fiable<br>
+                            • Filtre lisse les mesures<br>
+                            • Stable mais lent
+                        </div>
+                    </div>
+                    
+                    <p><strong>Exercice pratique :</strong></p>
+                    <ol>
+                        <li>Mettez R à 0.5 et observez</li>
+                        <li>Mettez R à 8.0 et comparez</li>
+                        <li>Quel réglage donne la meilleure précision ?</li>
+                    </ol>
+                `
+            },
+            {
+                title: "Le paramètre Q - Modèle de mouvement",
+                content: `
+                    <h3>Q contrôle la confiance dans le modèle</h3>
+                    
+                    <p>Le filtre utilise un modèle physique : "le drone continue sur sa lancée". Mais ce modèle peut être imparfait !</p>
+                    
+                    <div style="background: var(--panel); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Q petit (0.001) :</strong> "Mon modèle est parfait"<br>
+                        → Trajectoire très lisse, peut rater les virages
+                        <br><br>
+                        <strong>Q grand (2.0) :</strong> "Mon modèle est incertain"<br>
+                        → Suit mieux les changements, mais plus de bruit
+                    </div>
+                    
+                    <p><strong>Test important :</strong></p>
+                    <ol>
+                        <li>Choisissez mouvement "Circulaire"</li>
+                        <li>Q = 0.001 : Le filtre rate les virages</li>
+                        <li>Q = 0.5 : Le filtre suit le cercle</li>
+                    </ol>
+                `
+            },
+            {
+                title: "Situations difficiles",
+                content: `
+                    <h3>Comment le filtre gère les problèmes ?</h3>
+                    
+                    <div style="background: var(--error); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>📵 Perte de signal (Dropout)</strong><br>
+                        Pas de mesures GPS pendant plusieurs secondes<br>
+                        → Le filtre continue par prédiction seule
+                    </div>
+                    
+                    <div style="background: var(--warning); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>⚠️ Mesures aberrantes (Outliers)</strong><br>
+                        GPS indique une position impossible<br>
+                        → Le filtre doit ignorer ces mesures
+                    </div>
+                    
+                    <p><strong>Expérience :</strong></p>
+                    <ol>
+                        <li>Cliquez "Perte Signal" - voyez la ligne bleue continuer seule</li>
+                        <li>Cliquez "Mesures Erronées" - le filtre résiste aux outliers</li>
+                        <li>Observez comment l'incertitude (graphique orange) évolue</li>
+                    </ol>
+                `
+            },
+            {
+                title: "Interprétation des graphiques",
+                content: `
+                    <h3>Que nous disent les autres courbes ?</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                        <div style="background: var(--error); padding: 8px; border-radius: 5px;">
+                            <strong>📈 Erreur</strong><br>
+                            Distance entre estimation et réalité<br>
+                            Objectif : minimiser cette courbe
+                        </div>
+                        <div style="background: var(--warning); padding: 8px; border-radius: 5px;">
+                            <strong>📊 Incertitude</strong><br>
+                            Confiance du filtre en lui-même<br>
+                            Monte pendant les dropouts
+                        </div>
+                        <div style="background: var(--accent); padding: 8px; border-radius: 5px;">
+                            <strong>⚖️ Gain Kalman</strong><br>
+                            Force de correction des mesures<br>
+                            Grand = fait confiance au GPS
+                        </div>
+                        <div style="background: var(--success); padding: 8px; border-radius: 5px;">
+                            <strong>🎯 Innovations</strong><br>
+                            Surprise du filtre face aux mesures<br>
+                            Pics = mesures inattendues
+                        </div>
+                    </div>
+                    
+                    <p><strong>Pattern typique :</strong> Au début, tout est élevé (le filtre apprend), puis se stabilise.</p>
+                `
+            },
+            {
+                title: "À vous de jouer !",
+                content: `
+                    <h3>Défis pour maîtriser le filtre</h3>
+                    
+                    <div style="background: var(--success); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>🏆 Défi 1 : Réglage optimal</strong><br>
+                        Scénario "Basique" → Trouvez R et Q pour minimiser l'erreur moyenne
+                    </div>
+                    
+                    <div style="background: var(--accent); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>🏆 Défi 2 : Mouvement imprévisible</strong><br>
+                        Mouvement "Aléatoire" → Comment adapter Q ?
+                    </div>
+                    
+                    <div style="background: var(--error); padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>🏆 Défi 3 : Conditions extrêmes</strong><br>
+                        Scénario "Expert" → Pouvez-vous garder l'erreur sous 5m ?
+                    </div>
+                    
+                    <p><strong>Options avancées :</strong></p>
+                    <ul>
+                        <li><strong>Ellipses :</strong> Visualisent la confiance du filtre</li>
+                        <li><strong>Vecteurs vitesse :</strong> Montrent les prédictions de mouvement</li>
+                        <li><strong>R adaptatif :</strong> Ajuste automatiquement la confiance</li>
+                    </ul>
+                `
+            }
+        ];
+
+        function showTutorial() {
+            tutorialStep = 0;
+            displayTutorialStep();
+            document.getElementById('tutorial-modal').style.display = 'flex';
+        }
+
+        function displayTutorialStep() {
+            const step = tutorialSteps[tutorialStep];
+            document.getElementById('tutorial-title').textContent = `Étape ${tutorialStep + 1}/${tutorialSteps.length}: ${step.title}`;
+            document.getElementById('tutorial-content').innerHTML = step.content;
+        }
+
+        function nextStep() {
+            if (tutorialStep < tutorialSteps.length - 1) {
+                tutorialStep++;
+                displayTutorialStep();
+            }
+        }
+
+        function previousStep() {
+            if (tutorialStep > 0) {
+                tutorialStep--;
+                displayTutorialStep();
+            }
+        }
+
+        function closeTutorial() {
+            document.getElementById('tutorial-modal').style.display = 'none';
+        }
+
+        // Initialiser les écouteurs d'événements
+        function initEventListeners() {
+            document.getElementById('reset-button').addEventListener('click', resetAll);
+            
+            document.querySelectorAll('input[name="motion-type"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    params.motion_type = this.value;
+                    runSimulation();
+                    updateAutoInterpretation();
+                });
+            });
+            
+            document.getElementById('show-ellipses').addEventListener('change', function() {
+                params.show_ellipses = this.checked;
+                runSimulation();
+            });
+            
+            document.getElementById('show-velocity').addEventListener('change', function() {
+                params.show_velocity = this.checked;
+                runSimulation();
+            });
+            
+            document.getElementById('adaptive-R').addEventListener('change', function() {
+                params.adaptive_R = this.checked;
+                runSimulation();
+                updateAutoInterpretation();
+            });
+            
+            document.getElementById('multipath-effect').addEventListener('change', function() {
+                params.multipath_effect = this.checked;
+                runSimulation();
+                updateAutoInterpretation();
+            });
+        }
+
+        // Mise à jour automatique de l'interprétation
+        function updateAutoInterpretation() {
+            let interpretation = "🤖 <strong>Analyse automatique :</strong><br>";
+            
+            // Analyser les paramètres
+            if (params.R_val > 5.0) {
+                interpretation += "• GPS très bruité → Le filtre lisse beaucoup<br>";
+            } else if (params.R_val < 1.0) {
+                interpretation += "• GPS précis → Le filtre suit les mesures<br>";
+            }
+            
+            if (params.Q_pos_val > 1.0) {
+                interpretation += "• Modèle incertain → Filtre très adaptatif<br>";
+            } else if (params.Q_pos_val < 0.01) {
+                interpretation += "• Modèle sûr → Trajectoire très lisse<br>";
+            }
+            
+            // Analyser les résultats
+            if (kalman && true_path) {
+                const errors = kalman.map((est, i) => {
+                    const dx = true_path.x[i] - est[0];
+                    const dy = true_path.y[i] - est[1];
+                    return Math.sqrt(dx*dx + dy*dy);
+                });
+                const meanError = errors.reduce((a, b) => a + b) / errors.length;
+                
+                if (meanError < 2.0) {
+                    interpretation += "✅ <strong>Excellente</strong> précision (< 2m)<br>";
+                } else if (meanError < 5.0) {
+                    interpretation += "✅ <strong>Bonne</strong> précision (< 5m)<br>";
+                } else {
+                    interpretation += "⚠️ Précision <strong>moyenne</strong> (> 5m)<br>";
+                }
+                
+                // Conseil d'amélioration
+                if (meanError > 3.0) {
+                    if (params.R_val > 3.0 && params.Q_pos_val < 0.1) {
+                        interpretation += "💡 <strong>Conseil :</strong> Augmentez Q pour plus de réactivité<br>";
+                    } else if (params.R_val < 2.0 && params.Q_pos_val > 0.5) {
+                        interpretation += "💡 <strong>Conseil :</strong> Diminuez Q pour plus de stabilité<br>";
+                    }
+                }
+            }
+            
+            // Analyser les conditions
+            if (params.dropout_end - params.dropout_start > 15) {
+                interpretation += "📵 Longue perte de signal → Incertitude élevée<br>";
+            }
+            
+            if (params.outlier_magnitude > 30) {
+                interpretation += "⚠️ Gros outliers → Test de robustesse<br>";
+            }
+            
+            document.getElementById('auto-interpretation').innerHTML = interpretation;
+        }
+
+        // Initialiser les sliders avec interprétation automatique
+        function initSliders() {
+            const sliders = [
+                'R_val', 'Q_pos_val', 'Q_vel_val', 'initial_uncertainty', 'acceleration_factor', 'fading_memory',
+                'motion_noise', 'outlier_magnitude', 'dropout_start', 'dropout_end'
+            ];
+            
+            sliders.forEach(param => {
+                const slider = document.getElementById(param);
+                const valueDisplay = document.getElementById(`${param}-value`);
+                
+                valueDisplay.textContent = slider.value;
+                params[param] = parseFloat(slider.value);
+                
+                slider.addEventListener('input', function() {
+                    valueDisplay.textContent = this.value;
+                    params[param] = parseFloat(this.value);
+                    runSimulation();
+                    updateAutoInterpretation();
+                });
+            });
+        }
+
+        // Fonction simulateTruePath (identique à l'original)
+        function simulateTruePath(T, motion_type, motion_noise, acceleration_factor) {
+            Math.seedrandom('42');
+            
+            let x = new Array(T);
+            let y = new Array(T);
+            
+            if (motion_type === 'straight') {
+                for (let i = 0; i < T; i++) {
+                    x[i] = (i > 0 ? x[i-1] : 0) + (1 + gaussianRandom(0, motion_noise)) * acceleration_factor;
+                    y[i] = (i > 0 ? y[i-1] : 0) + (0.5 + gaussianRandom(0, motion_noise)) * acceleration_factor;
+                }
+            } else if (motion_type === 'circular') {
+                for (let i = 0; i < T; i++) {
+                    const t = 4 * Math.PI * i / T;
+                    x[i] = 10 * Math.cos(t * acceleration_factor) + gaussianRandom(0, motion_noise);
+                    y[i] = 10 * Math.sin(t * acceleration_factor) + gaussianRandom(0, motion_noise);
+                }
+            } else if (motion_type === 'random') {
+                for (let i = 0; i < T; i++) {
+                    x[i] = (i > 0 ? x[i-1] : 0) + gaussianRandom(1, 0.5) * acceleration_factor + gaussianRandom(0, motion_noise);
+                    y[i] = (i > 0 ? y[i-1] : 0) + gaussianRandom(0.5, 0.3) * acceleration_factor + gaussianRandom(0, motion_noise);
+                }
+            } else { // accelerating
+                for (let i = 0; i < T; i++) {
+                    const a = 0.1 * acceleration_factor;
+                    x[i] = 0.5 * a * i * i + gaussianRandom(0, motion_noise);
+                    y[i] = 0.3 * a * i * i + gaussianRandom(0, motion_noise);
+                }
+            }
+            
+            return {x, y};
+        }
+
+        // Fonction simulateGPSMeasurements (identique à l'original)
+        function simulateGPSMeasurements(true_path, R_val, dropout_start, dropout_end, outlier_indices, outlier_magnitude, multipath_effect) {
+            const T = true_path.x.length;
+            let gps_x = new Array(T);
+            let gps_y = new Array(T);
+            
+            let mp_x = 0, mp_y = 0;
+            
+            for (let i = 0; i < T; i++) {
+                // Effet multitrajets
+                if (multipath_effect) {
+                    mp_x = 0.7 * mp_x + gaussianRandom(0, R_val/2);
+                    mp_y = 0.7 * mp_y + gaussianRandom(0, R_val/2);
+                }
+                
+                // Valeur de base avec bruit
+                gps_x[i] = true_path.x[i] + gaussianRandom(0, R_val) + (multipath_effect ? mp_x : 0);
+                gps_y[i] = true_path.y[i] + gaussianRandom(0, R_val) + (multipath_effect ? mp_y : 0);
+                
+                // Dropout
+                if (i >= dropout_start && i < dropout_end) {
+                    gps_x[i] = NaN;
+                    gps_y[i] = NaN;
+                }
+                
+                // Outliers
+                if (outlier_indices.includes(i)) {
+                    gps_x[i] += (Math.random() > 0.5 ? 1 : -1) * outlier_magnitude;
+                    gps_y[i] += (Math.random() > 0.5 ? 1 : -1) * outlier_magnitude;
+                }
+            }
+            
+            return {x: gps_x, y: gps_y};
+        }
+
+        // Implémentation du filtre de Kalman
+        function kalmanFilter(zs_x, zs_y, R, Q_pos, Q_vel, initial_velocity, initial_uncertainty, adaptive_R, fading_memory) {
+            const n = zs_x.length;
+            
+            // Trouver la première mesure valide
+            let first = 0;
+            while (first < n && (isNaN(zs_x[first]) || isNaN(zs_y[first]))) {
+                first++;
+            }
+            
+            if (first === n) {
+                throw new Error("Aucune mesure valide pour initialiser le filtre.");
+            }
+            
+            // État initial [x, y, vx, vy]
+            let x = [zs_x[first], zs_y[first], initial_velocity[0], initial_velocity[1]];
+            let P = numeric.identity(4).map(row => row.map(val => val * initial_uncertainty));
+            
+            const dt = 1.0;
+            const F = [
+                [1, 0, dt, 0],
+                [0, 1, 0, dt],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1]
+            ];
+            
+            const H = [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0]
+            ];
+            
+            const Q = numeric.diag([Q_pos, Q_pos, Q_vel, Q_vel]);
+            
+            let results = [];
+            let Ps = [];
+            let Ks = [];
+            let innovations = [];
+            
+            let R_cur = R;
+            
+            for (let i = 0; i < n; i++) {
+                // Prédiction
+                x = numeric.dot(F, x);
+                P = numeric.dot(numeric.dot(F, P), numeric.transpose(F));
+                P = numeric.add(P, Q);
+                P = numeric.mul(P, fading_memory);
+                
+                if (isNaN(zs_x[i]) || isNaN(zs_y[i])) {
+                    results.push([...x]);
+                    Ps.push([...P.map(row => [...row])]);
+                    Ks.push(numeric.rep([4, 2], 0));
+                    innovations.push([0, 0]);
+                    continue;
+                }
+                
+                const z = [zs_x[i], zs_y[i]];
+                
+                // Innovation
+                const Hx = numeric.dot(H, x);
+                const y = [z[0] - Hx[0], z[1] - Hx[1]];
+                innovations.push([...y]);
+                
+                if (adaptive_R && i > 0) {
+                    const r0 = 2 * Math.sqrt(R);
+                    R_cur = numeric.norm2(y) > r0 ? R * 5 : R;
+                }
+                
+                const S = numeric.add(numeric.dot(numeric.dot(H, P), numeric.transpose(H)), numeric.mul(R_cur, numeric.identity(2)));
+                const K = numeric.dot(numeric.dot(P, numeric.transpose(H)), numeric.inv(S));
+                
+                // Mise à jour
+                x = numeric.add(x, numeric.dot(K, y));
+                const I = numeric.identity(4);
+                P = numeric.dot(numeric.sub(I, numeric.dot(K, H)), P);
+                
+                results.push([...x]);
+                Ps.push([...P.map(row => [...row])]);
+                Ks.push([...K.map(row => [...row])]);
+            }
+            
+            return {
+                results: results,
+                Ps: Ps,
+                Ks: Ks,
+                innovations: innovations
+            };
+        }
+
+        // Générer un nombre aléatoire avec distribution gaussienne
+        function gaussianRandom(mean = 0, stdev = 1) {
+            const u = 1 - Math.random();
+            const v = Math.random();
+            const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            return z * stdev + mean;
+        }
+
+        // Exécuter la simulation complète
+        function runSimulation() {
+            const truePath = simulateTruePath(
+                params.T, 
+                params.motion_type, 
+                params.motion_noise, 
+                params.acceleration_factor
+            );
+            
+            const gpsData = simulateGPSMeasurements(
+                truePath, 
+                params.R_val,
+                params.dropout_start,
+                params.dropout_end,
+                params.outlier_indices,
+                params.outlier_magnitude,
+                params.multipath_effect
+            );
+            
+            const kalmanResult = kalmanFilter(
+                gpsData.x,
+                gpsData.y,
+                params.R_val,
+                params.Q_pos_val,
+                params.Q_vel_val,
+                [1, 1],
+                params.initial_uncertainty,
+                params.adaptive_R,
+                params.fading_memory
+            );
+            
+            true_path = truePath;
+            gps = gpsData;
+            kalman = kalmanResult.results;
+            P_list = kalmanResult.Ps;
+            K_list = kalmanResult.Ks;
+            innovations = kalmanResult.innovations;
+            
+            updatePlots();
+            updateAutoInterpretation();
+        }
+
+        // Mettre à jour tous les graphiques
+        function updatePlots() {
+            updateTrajectoryPlot();
+            updateErrorPlot();
+            updateUncertaintyPlot();
+            updateGainPlot();
+            updateInnovationPlot();
+            updateStatsPanel();
+        }
+
+        // Mettre à jour le graphique de trajectoire
+        function updateTrajectoryPlot() {
+            const time = Array.from({length: params.T}, (_, i) => i);
+            
+            // Préparer les données pour Plotly
+            const trueTrajectory = {
+                x: true_path.x,
+                y: true_path.y,
+                mode: 'lines',
+                name: 'Trajectoire réelle',
+                line: { color: colors.true_trajectory, width: 3 },
+                hovertemplate: 'X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>'
+            };
+            
+            // Filtrer les points GPS valides
+            const validGPS = gps.x.map((x, i) => isNaN(x) ? null : x);
+            const validGPSy = gps.y.map((y, i) => isNaN(y) ? null : y);
+            
+            const gpsMeasurements = {
+                x: validGPS,
+                y: validGPSy,
+                mode: 'markers',
+                name: 'Mesures GPS',
+                marker: {
+                    color: colors.gps_measurements,
+                    size: 8,
+                    line: { color: 'white', width: 1 }
+                },
+                hovertemplate: 'X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>'
+            };
+            
+            const kalmanEstimate = {
+                x: kalman.map(point => point[0]),
+                y: kalman.map(point => point[1]),
+                mode: 'lines',
+                name: 'Estimation Kalman',
+                line: { color: colors.kalman_estimate, width: 3.5 },
+                hovertemplate: 'X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>'
+            };
+            
+            const data = [trueTrajectory, gpsMeasurements, kalmanEstimate];
+            
+            // Ajouter des ellipses de confiance si activé
+            if (params.show_ellipses) {
+                const step = Math.max(1, Math.floor(params.T / 10));
+                for (let i = 0; i < params.T; i += step) {
+                    if (i < P_list.length) {
+                        const cov = P_list[i].slice(0, 2).map(row => row.slice(0, 2));
+                        const ellipse = drawEllipse(
+                            kalman[i][0], 
+                            kalman[i][1], 
+                            cov, 
+                            2.0, 
+                            colors.ellipses
+                        );
+                        data.push(ellipse);
+                    }
+                }
+            }
+            
+            // Ajouter des vecteurs vitesse si activé
+            if (params.show_velocity) {
+                const step = Math.max(1, Math.floor(params.T / 8));
+                for (let i = 0; i < params.T; i += step) {
+                    const vx = kalman[i][2];
+                    const vy = kalman[i][3];
+                    
+                    const arrow = {
+                        type: 'scatter',
+                        x: [kalman[i][0], kalman[i][0] + 2 * vx],
+                        y: [kalman[i][1], kalman[i][1] + 2 * vy],
+                        mode: 'lines',
+                        line: { color: colors.velocity_vectors, width: 2 },
+                        showlegend: false,
+                        hoverinfo: 'skip'
+                    };
+                    
+                    data.push(arrow);
+                    
+                    // Ajouter la tête de flèche
+                    const arrowHead = {
+                        x: [kalman[i][0] + 2 * vx],
+                        y: [kalman[i][1] + 2 * vy],
+                        mode: 'markers',
+                        marker: {
+                            color: colors.velocity_vectors,
+                            size: 8,
+                            symbol: 'triangle-up'
+                        },
+                        showlegend: false,
+                        hoverinfo: 'skip'
+                    };
+                    
+                    data.push(arrowHead);
+                }
+            }
+            
+            // Mise en page
+            const layout = {
+                title: 'TRAJECTOIRE & ESTIMATION',
+                xaxis: { title: 'Position X (m)', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                yaxis: { title: 'Position Y (m)', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                plot_bgcolor: colors.card,
+                paper_bgcolor: colors.panel,
+                font: { color: colors.text },
+                legend: { 
+                    x: 0, 
+                    y: 1,
+                    bgcolor: colors.card,
+                    bordercolor: colors.border,
+                    borderwidth: 1
+                },
+                hovermode: 'closest'
+            };
+            
+            Plotly.react('trajectory-plot', data, layout);
+        }
+
+        // Dessiner une ellipse de confiance
+        function drawEllipse(x, y, cov, n_std, color) {
+            // Calculer les valeurs propres et vecteurs propres
+            const a = cov[0][0];
+            const b = cov[0][1];
+            const c = cov[1][1];
+            
+            const lambda1 = (a + c) / 2 + Math.sqrt(Math.pow((a - c) / 2, 2) + Math.pow(b, 2));
+            const lambda2 = (a + c) / 2 - Math.sqrt(Math.pow((a - c) / 2, 2) + Math.pow(b, 2));
+            
+            const width = 2 * n_std * Math.sqrt(lambda1);
+            const height = 2 * n_std * Math.sqrt(lambda2);
+            
+            let angle = 0;
+            if (b !== 0) {
+                angle = Math.atan2(lambda1 - a, b) * 180 / Math.PI;
+            }
+            
+            // Générer les points de l'ellipse
+            const t = Array.from({length: 100}, (_, i) => i * 2 * Math.PI / 99);
+            const ellipseX = t.map(theta => x + width/2 * Math.cos(theta) * Math.cos(angle) - height/2 * Math.sin(theta) * Math.sin(angle));
+            const ellipseY = t.map(theta => y + width/2 * Math.cos(theta) * Math.sin(angle) + height/2 * Math.sin(theta) * Math.cos(angle));
+            
+            return {
+                x: ellipseX,
+                y: ellipseY,
+                mode: 'lines',
+                line: { color: color, width: 1.8 },
+                fill: 'none',
+                showlegend: false,
+                hoverinfo: 'skip'
+            };
+        }
+
+        // Mettre à jour le graphique d'erreur
+        function updateErrorPlot() {
+            const time = Array.from({length: params.T}, (_, i) => i);
+            
+            // Calculer l'erreur
+            const error = time.map(i => {
+                const dx = true_path.x[i] - kalman[i][0];
+                const dy = true_path.y[i] - kalman[i][1];
+                return Math.sqrt(dx*dx + dy*dy);
+            });
+            
+            const errorTrace = {
+                x: time,
+                y: error,
+                mode: 'lines',
+                name: 'Erreur',
+                line: { color: colors.error, width: 2 },
+                fill: 'tozeroy',
+                fillcolor: `rgba(${hexToRgb(colors.error).r}, ${hexToRgb(colors.error).g}, ${hexToRgb(colors.error).b}, 0.25)`
+            };
+            
+            const layout = {
+                title: 'ERREUR POSITION',
+                xaxis: { title: 'Temps', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                yaxis: { title: 'Erreur (m)', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                plot_bgcolor: colors.card,
+                paper_bgcolor: colors.panel,
+                font: { color: colors.text },
+                showlegend: false
+            };
+            
+            Plotly.react('error-plot', [errorTrace], layout);
+        }
+
+        // Mettre à jour le graphique d'incertitude
+        function updateUncertaintyPlot() {
+            const time = Array.from({length: params.T}, (_, i) => i);
+            
+            // Calculer la trace de la matrice de covariance (position seulement)
+            const traceP = P_list.map(P => P[0][0] + P[1][1]);
+            
+            const uncertaintyTrace = {
+                x: time,
+                y: traceP,
+                mode: 'lines',
+                name: 'Incertitude',
+                line: { color: colors.warning, width: 2 },
+                fill: 'tozeroy',
+                fillcolor: `rgba(${hexToRgb(colors.warning).r}, ${hexToRgb(colors.warning).g}, ${hexToRgb(colors.warning).b}, 0.25)`
+            };
+            
+            const layout = {
+                title: 'INCERTITUDE',
+                xaxis: { title: 'Temps', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                yaxis: { title: 'Trace(P)', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                plot_bgcolor: colors.card,
+                paper_bgcolor: colors.panel,
+                font: { color: colors.text },
+                showlegend: false
+            };
+            
+            Plotly.react('uncertainty-plot', [uncertaintyTrace], layout);
+        }
+
+        // Mettre à jour le graphique de gain de Kalman
+        function updateGainPlot() {
+            const time = Array.from({length: params.T}, (_, i) => i);
+            
+            // Calculer la norme du gain de Kalman
+            const Kmag = K_list.map(K => {
+                const k11 = K[0][0], k12 = K[0][1];
+                const k21 = K[1][0], k22 = K[1][1];
+                const k31 = K[2][0], k32 = K[2][1];
+                const k41 = K[3][0], k42 = K[3][1];
+                
+                return Math.sqrt(k11*k11 + k12*k12 + k21*k21 + k22*k22 + k31*k31 + k32*k32 + k41*k41 + k42*k42);
+            });
+            
+            const gainTrace = {
+                x: time,
+                y: Kmag,
+                mode: 'lines',
+                name: 'Gain Kalman',
+                line: { color: colors.accent, width: 2 },
+                fill: 'tozeroy',
+                fillcolor: `rgba(${hexToRgb(colors.accent).r}, ${hexToRgb(colors.accent).g}, ${hexToRgb(colors.accent).b}, 0.25)`
+            };
+            
+            const layout = {
+                title: 'GAIN KALMAN',
+                xaxis: { title: 'Temps', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                yaxis: { title: '||K||', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                plot_bgcolor: colors.card,
+                paper_bgcolor: colors.panel,
+                font: { color: colors.text },
+                showlegend: false
+            };
+            
+            Plotly.react('gain-plot', [gainTrace], layout);
+        }
+
+        // Mettre à jour le graphique d'innovations
+        function updateInnovationPlot() {
+            const time = Array.from({length: params.T}, (_, i) => i);
+            
+            // Calculer la norme des innovations
+            const innovMag = innovations.map(inn => Math.sqrt(inn[0]*inn[0] + inn[1]*inn[1]));
+            
+            const innovationTrace = {
+                x: time,
+                y: innovMag,
+                mode: 'lines',
+                name: 'Innovations',
+                line: { color: colors.success, width: 2 }
+            };
+            
+            // Seuil 2σ
+            const threshold = 2 * Math.sqrt(params.R_val);
+            const thresholdTrace = {
+                x: [time[0], time[time.length-1]],
+                y: [threshold, threshold],
+                mode: 'lines',
+                name: 'Seuil 2σ',
+                line: { color: colors.error, width: 1.8, dash: 'dash' }
+            };
+            
+            const layout = {
+                title: 'INNOVATIONS',
+                xaxis: { title: 'Temps', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                yaxis: { title: '||Innov||', gridcolor: colors.grid, zerolinecolor: colors.grid },
+                plot_bgcolor: colors.card,
+                paper_bgcolor: colors.panel,
+                font: { color: colors.text },
+                legend: { 
+                    x: 1, 
+                    y: 1,
+                    bgcolor: colors.card,
+                    bordercolor: colors.border,
+                    borderwidth: 1,
+                    font: { size: 10 }
+                }
+            };
+            
+            Plotly.react('innovation-plot', [innovationTrace, thresholdTrace], layout);
+        }
+
+        // Mettre à jour le panneau d'information
+        function updateStatsPanel() {
+            // Calculer les statistiques
+            const error = Array.from({length: params.T}, (_, i) => {
+                const dx = true_path.x[i] - kalman[i][0];
+                const dy = true_path.y[i] - kalman[i][1];
+                return Math.sqrt(dx*dx + dy*dy);
+            });
+            
+            const meanError = error.reduce((sum, val) => sum + val, 0) / params.T;
+            const maxError = Math.max(...error);
+            const minError = Math.min(...error);
+            const stdError = Math.sqrt(error.map(e => Math.pow(e - meanError, 2)).reduce((sum, val) => sum + val, 0) / params.T);
+            
+            const traceP = P_list.map(P => P[0][0] + P[1][1]);
+            const meanUncertainty = traceP.reduce((sum, val) => sum + val, 0) / params.T;
+            
+            const Kmag = K_list.map(K => {
+                const k11 = K[0][0], k12 = K[0][1];
+                const k21 = K[1][0], k22 = K[1][1];
+                const k31 = K[2][0], k32 = K[2][1];
+                const k41 = K[3][0], k42 = K[3][1];
+                
+                return Math.sqrt(k11*k11 + k12*k12 + k21*k21 + k22*k22 + k31*k31 + k32*k32 + k41*k41 + k42*k42);
+            });
+            const meanGain = Kmag.reduce((sum, val) => sum + val, 0) / params.T;
+            
+            // Formater le texte
+            const statsText = `
+                Points: ${params.T}<br>
+                Erreur Moyenne: ${meanError.toFixed(2)} m<br>
+                Erreur Max: ${maxError.toFixed(2)} m<br>
+                Erreur Min: ${minError.toFixed(2)} m<br>
+                Écart-type: ${stdError.toFixed(2)} m<br>
+                <br>
+                Incertitude Moyenne (Trace P_xy): ${meanUncertainty.toFixed(2)}<br>
+                Gain Kalman Moyen: ${meanGain.toFixed(3)}<br>
+                <br>
+                R = ${params.R_val.toFixed(2)}, Qp = ${params.Q_pos_val.toFixed(2)}, Qv = ${params.Q_vel_val.toFixed(2)}<br>
+                Dropout: ${params.dropout_start} → ${params.dropout_end}<br>
+                Outliers: ${params.outlier_indices.length} (mag = ${params.outlier_magnitude.toFixed(0)})<br>
+                Multipath: ${params.multipath_effect ? 'ON' : 'OFF'}<br>
+                R adaptatif: ${params.adaptive_R ? 'ON' : 'OFF'}<br>
+                Facteur d'oubli: ${params.fading_memory.toFixed(3)}
+            `;
+            
+            document.getElementById('stats-info').innerHTML = statsText;
+        }
+
+        // Convertir une couleur hexadécimale en RGB
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        // Ajouter seedrandom pour la reproductibilité
+        Math.seedrandom = function(seed) {
+            let x = 0;
+            for (let i = 0; i < seed.length; i++) {
+                x += seed.charCodeAt(i);
+            }
+            
+            return function() {
+                x = Math.sin(x) * 10000;
+                return x - Math.floor(x);
+            };
+        };
+
+        // Réinitialiser tous les paramètres
+        function resetAll() {
+            // Réinitialiser les sliders
+            document.getElementById('R_val').value = 2.0;
+            document.getElementById('R_val-value').textContent = '2.0';
+            params.R_val = 2.0;
+            
+            document.getElementById('Q_pos_val').value = 0.01;
+            document.getElementById('Q_pos_val-value').textContent = '0.01';
+            params.Q_pos_val = 0.01;
+            
+            document.getElementById('Q_vel_val').value = 0.01;
+            document.getElementById('Q_vel_val-value').textContent = '0.01';
+            params.Q_vel_val = 0.01;
+            
+            document.getElementById('initial_uncertainty').value = 500;
+            document.getElementById('initial_uncertainty-value').textContent = '500';
+            params.initial_uncertainty = 500;
+            
+            document.getElementById('acceleration_factor').value = 1.0;
+            document.getElementById('acceleration_factor-value').textContent = '1.0';
+            params.acceleration_factor = 1.0;
+            
+            document.getElementById('fading_memory').value = 1.0;
+            document.getElementById('fading_memory-value').textContent = '1.0';
+            params.fading_memory = 1.0;
+            
+            document.getElementById('motion_noise').value = 0.0;
+            document.getElementById('motion_noise-value').textContent = '0.0';
+            params.motion_noise = 0.0;
+            
+            document.getElementById('outlier_magnitude').value = 20;
+            document.getElementById('outlier_magnitude-value').textContent = '20';
+            params.outlier_magnitude = 20;
+            
+            document.getElementById('dropout_start').value = 20;
+            document.getElementById('dropout_start-value').textContent = '20';
+            params.dropout_start = 20;
+            
+            document.getElementById('dropout_end').value = 30;
+            document.getElementById('dropout_end-value').textContent = '30';
+            params.dropout_end = 30;
+            
+            // Réinitialiser les radios
+            document.getElementById('motion-straight').checked = true;
+            params.motion_type = 'straight';
+            
+            // Réinitialiser les checkboxes
+            document.getElementById('show-ellipses').checked = false;
+            params.show_ellipses = false;
+            
+            document.getElementById('show-velocity').checked = false;
+            params.show_velocity = false;
+            
+            document.getElementById('adaptive-R').checked = false;
+            params.adaptive_R = false;
+            
+            document.getElementById('multipath-effect').checked = false;
+            params.multipath_effect = false;
+            
+            // Relancer la simulation
+            runSimulation();
+        }
+    </script>
+</body>
+</html>
